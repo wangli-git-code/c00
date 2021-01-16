@@ -24,11 +24,18 @@ public class produce {
     }
 
 
-
     private void produceAddGlobals() {
         produceOut.addAll(IntToBytes(globals.size())); //globalCounts
+
+        System.out.print("globalCounts:"+globals.size());
+        System.out.println(IntToBytes(globals.size()));
+
         for (globalDef global : globals) {
             produceOut.add(ByteIntToBytes(global.getIs_const()));//is_const: u8
+
+            System.out.print("is_const:"+global.getIs_const());
+            System.out.println(IntToBytes(global.getIs_const()));
+
             List<Byte> globalValueCount;// value count
             List<Byte> globalValue;//value items
             //不存在全局名称,为变量或常量,64位的0,八个字节
@@ -41,6 +48,9 @@ public class produce {
                 globalValue = ListCharToBytes(global.getValues());
                 globalValueCount = IntToBytes(globalValue.size());
             }
+
+            System.out.print("globalValueCount:"+globalValueCount);
+            System.out.println("globalValue:"+globalValue);
             produceOut.addAll(globalValueCount);
             produceOut.addAll(globalValue);
         }
