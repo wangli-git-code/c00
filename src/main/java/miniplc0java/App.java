@@ -1,9 +1,12 @@
 package miniplc0java;
 
+import com.google.errorprone.annotations.Var;
 import miniplc0java.analyser.Analyser;
 import miniplc0java.analyser.produce;
 import miniplc0java.error.CompileError;
 import miniplc0java.tokenizer.StringIter;
+import miniplc0java.tokenizer.Token;
+import miniplc0java.tokenizer.TokenType;
 import miniplc0java.tokenizer.Tokenizer;
 import miniplc0java.struct.functionDef;
 import miniplc0java.struct.globalDef;
@@ -120,6 +123,25 @@ public class App {
             StringIter iter=new StringIter(scanner);
             iter.readAll();
             System.out.println(iter.getLinesBuffer());
+//            Tokenizer tokenizer=new Tokenizer(iter);
+//            List<Token> tokens = new ArrayList<Token>();
+//            try {
+//                while (true) {
+//                    Token token = tokenizer.nextToken();
+//                    if (token.getTokenType().equals(TokenType.EOF)) {
+//                        break;
+//                    }
+//                    tokens.add(token);
+//                }
+//            } catch (Exception e) {
+//                // 遇到错误不输出，直接退出
+//                System.err.println(e);
+//                System.exit(0);
+//                return;
+//            }
+//            for (Token token : tokens) {
+//                System.out.println(token.toString());
+//            }
             Analyser temp=new Analyser(new Tokenizer(iter));
             temp.analyseProgram();
             for (globalDef globalDef:temp.getGlobalTable()){
