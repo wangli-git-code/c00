@@ -170,7 +170,7 @@ public class App {
         }
         catch (Exception s){
             System.out.println(s);
-            throw s;
+            System.exit(-1);
         }
     }
 }
