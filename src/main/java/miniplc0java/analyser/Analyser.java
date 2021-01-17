@@ -42,7 +42,7 @@ public final class Analyser {
     int global_offset=0;
 
     /** 函数ID */
-    int function_id=0;
+    int function_id=1;
 
     /**参数偏移*/
     int parameter_offset=0;
