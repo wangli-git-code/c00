@@ -133,8 +133,12 @@ public class Tokenizer {
                 return new Token(TokenType.IF_KW,temp,begin,it.currentPos());
             case "else" :
                 return new Token(TokenType.ELSE_KW,temp,begin,it.currentPos());
+            case "break":
+                return new Token(TokenType.BREAK_KW,temp,begin,it.currentPos());
             case "return" :
                 return new Token(TokenType.RETURN_KW,temp,begin,it.currentPos());
+            case "continue":
+                return new Token(TokenType.CONTINUE_KW,temp,begin,it.currentPos());
             default:
                 return new Token(TokenType.IDENT,temp,begin,it.currentPos());
         }

@@ -1,5 +1,7 @@
 package miniplc0java.analyser;
 
+
+
 import miniplc0java.error.*;
 import miniplc0java.instruction.Instruction;
 import miniplc0java.instruction.Operation;
@@ -286,16 +288,7 @@ public final class Analyser {
     private String analyseExpression() throws CompileError{
         String type="";
         if (check(TokenType.IDENT)){
-            Token temp=expect(TokenType.IDENT);
-            if (check(TokenType.ASSIGN)){
-                type=analyseAssignExpression(temp);
-            }
-            else if (check(TokenType.L_PAREN)){
-                type=analyseCallExpression(temp);
-            }
-            else {
-                type=analyseIdentExpression(temp);
-            }
+            type=analyseAssign_Call_IdentExpression();
         }
         else if (check(TokenType.MINUS)){
             type=analyseNegativeExpression();
@@ -384,136 +377,178 @@ public final class Analyser {
         }
         return type;
     }
-    private String analyseAssignExpression(Token temp) throws CompileError{
-        expect(TokenType.ASSIGN);
-        String type1="";
-        SymbolEntry symbolEntry= Fuzhu.CanBeUsed(symbolTable,level,temp.getValueString());
-        parameter param= Fuzhu.isParameter(parameters,temp.getValueString());
-        if (symbolEntry==null&&param==null){
-            throw new AnalyzeError(ErrorCode.NotDeclared, temp.getStartPos());
+    private String analyseAssign_Call_IdentExpression()throws CompileError{
+        String Type1 = "";
+        Token tmp = expect(TokenType.IDENT);
+
+        //偷偷查看下一个token
+        Token var = peek();
+        if(check(TokenType.ASSIGN)){
+            expect(TokenType.ASSIGN);
+            String type = "";
+            /* 在当层或之前层查找该变量 */
+            SymbolEntry symbol = Fuzhu.CanBeUsed(symbolTable, level, tmp.getValueString());
+            /* 在函数列表中查找该变量 */
+            parameter param = Fuzhu.isParameter(parameters, tmp.getValueString());
+            /* 找不到该变量 */
+            if(symbol==null&&param==null){
+                throw new AnalyzeError(ErrorCode.NotDeclared, tmp.getStartPos());
+            }
+            else {
+                //为符号(首先查找局部变量)
+                if(symbol!=null&&symbol.getLevel()>0) {
+                    type = symbol.getType();
+                    /* 该变量类型与表达式类型不同,或l_expr的类型为void */
+                    if (type.equals("void")) {
+                        throw new AnalyzeError(ErrorCode.InvalidAssignment, tmp.getStartPos());
+                    }
+                    /* 找到一个常量 */
+                    else if (symbol.isConstant() == true) {
+                        throw new AnalyzeError(ErrorCode.AssignToConstant, tmp.getStartPos());
+                    }
+                    /* 都不是 */
+                    else {
+                        instructionList.add(new Instruction(Operation.loca, symbol.getStackOffset(), 4));
+                    }
+                }
+                //为参数
+                else if (param!=null){
+                    type = param.getType();
+                    if (type.equals("void")) {
+                        throw new AnalyzeError(ErrorCode.InvalidAssignment, tmp.getStartPos());
+                    }
+                    int offset = Fuzhu.getParamOffset(param.getName(), parameters);
+                    instructionList.add(new Instruction(Operation.arga,parameter_offset+offset, 4));
+                }else if(symbol.getLevel() == 0){
+                    type = symbol.getType();
+                    /* 该变量类型与表达式类型不同,或l_expr的类型为void */
+                    if (type.equals("void")) {
+                        throw new AnalyzeError(ErrorCode.InvalidAssignment, tmp.getStartPos());
+                    }
+                    /* 找到一个常量 */
+                    else if (symbol.isConstant() == true) {
+                        throw new AnalyzeError(ErrorCode.AssignToConstant, tmp.getStartPos());
+                    }
+                    /* 都不是 */
+                    else {
+                        instructionList.add(new Instruction(Operation.globa, symbol.getStackOffset(), 4));
+                    }
+                }
+            }
+
+            String Type2 = "";
+            if(check(TokenType.MINUS)||check(TokenType.IDENT)||check(TokenType.L_PAREN)||isLiteralExpr()) {
+                Type2 = analyseExpression();
+            }
+
+            if(!type.equals(Type2)){
+                throw new AnalyzeError(ErrorCode.InvalidAssignment, tmp.getStartPos());
+            }
+
+            while (!stack.empty()) {
+                if(type.equals("int")) {
+                    Instruction.AddToInstructionListInt(stack.pop(), instructionList);
+                }
+            }
+
+            instructionList.add(new Instruction(Operation.store));
+
+            Type1 = "void";
+
         }
-        else{
-            if (symbolEntry!=null&&symbolEntry.getLevel()>0){
-                type1=symbolEntry.getType();
-                if (type1.equals("void")){
-                    throw new AnalyzeError(ErrorCode.InvalidAssignment, temp.getStartPos());
+
+        else if(check(TokenType.L_PAREN)){
+            expect(TokenType.L_PAREN);
+
+            stack.push(TokenType.L_PAREN);
+            /* 判断是否为已经定义的函数或库函数 */
+            functionDef function = functionTable.get(tmp.getValueString());
+            Instruction instruction;
+
+            if(function!=null||Fuzhu.isLibraryFunction(tmp.getValueString())){
+                int offset;
+
+                /* 库函数 */
+                if(Fuzhu.isLibraryFunction(tmp.getValueString())){
+                    offset=global_offset;
+                    //库函数允许重复，直接添加进全局
+                    globalTable.add(new globalDef(tmp.getValueString(),1, Fuzhu.ChangeToBinary(tmp.getValueString())));
+                    global_offset++;
+                    instruction = new Instruction(Operation.callname, offset, 4);
+
+                    Type1 = Fuzhu.TypeReturnOfLibrary(tmp.getValueString());
                 }
-                else if (symbolEntry.isConstant==true){
-                    throw new AnalyzeError(ErrorCode.AssignToConstant, temp.getStartPos());
-                }
+                /* 为自己创建的函数 */
+                /* 非库函数才需要返回值空间 */
                 else{
+                    offset = function.getFunction_id();
+                    instruction = new Instruction(Operation.call,offset, 4);
 
-                        instructionList.add(new Instruction(Operation.loca, symbolEntry.getStackOffset(), 4));
-
+                    Type1 = function.getType();
                 }
+            }else{
+                throw new AnalyzeError(ErrorCode.NotDeclared, tmp.getStartPos());
             }
-            else if (param!=null) {
-                type1=param.getType();
-                if (type1.equals("void")){
-                    throw new AnalyzeError(ErrorCode.InvalidAssignment, temp.getStartPos());
-                }
-                int offset = Fuzhu.getParamOffset(param.getName(),parameters);
-                instructionList.add(new Instruction(Operation.arga,parameter_offset+offset,4));
-            }
-            else if (symbolEntry.getLevel()==0){
-                type1 = symbolEntry.getType();
-                if (type1.equals("void")) {
-                    throw new AnalyzeError(ErrorCode.InvalidAssignment, temp.getStartPos());
-                }
-                else if (symbolEntry.isConstant()==true){
-                    throw new AnalyzeError(ErrorCode.AssignToConstant, temp.getStartPos());
-                }else {
-                    instructionList.add(new Instruction(Operation.globa, symbolEntry.getStackOffset() , 4));
-                }
-            }
-        }
-        String type2="";
-        if(check(TokenType.MINUS)||check(TokenType.IDENT)||check(TokenType.L_PAREN)||isLiteralExpr()) {
-            type2 = analyseExpression();
-        }
-        if (!type2.equals(type1)){
-            throw new AnalyzeError(ErrorCode.InvalidAssignment, temp.getStartPos());
-        }
-        while (!stack.empty()){
-            Instruction.AddToInstructionListInt(stack.pop(),instructionList);
-        }
-        instructionList.add(new Instruction(Operation.store));
-        return "void";
-    }
 
-    private String analyseCallExpression(Token temp) throws CompileError{
-        expect(TokenType.L_PAREN);
-        String type1="";
-        stack.push(TokenType.L_PAREN);
-        functionDef function=functionTable.get(temp.getValueString());
-        Instruction instruction;
-        if (function!=null|| Fuzhu.isLibraryFunction(temp.getValueString())){
-            int offset=0;
-            if (Fuzhu.isLibraryFunction(temp.getValueString())){
-                offset=global_offset;
-                globalTable.add(new globalDef(temp.getValueString(),1, Fuzhu.ChangeToBinary(temp.getValueString())));
-                global_offset++;
-                instruction=new Instruction(Operation.callname,offset,4);
-                type1= Fuzhu.TypeReturnOfLibrary(temp.getValueString());
+            if(Fuzhu.hasReturn(tmp.getValueString(), functionTable)){
+                instructionList.add(new Instruction(Operation.stackalloc,1, 4));
+            }else{
+                instructionList.add(new Instruction(Operation.stackalloc,0, 4));
             }
-            else {
-                offset=function.getFunction_id();
-                instruction=new Instruction(Operation.call,offset,4);
-                type1=function.getType();
+
+
+            if(check(TokenType.MINUS)||check(TokenType.IDENT)||check(TokenType.L_PAREN)||isLiteralExpr()) {
+                /* 函数参数均正确 */
+                analyseCallParamList(tmp.getValueString());
             }
-        }
-        else {
-            throw new AnalyzeError(ErrorCode.NotDeclared, temp.getStartPos());
-        }
-        if (Fuzhu.hasReturn(temp.getValueString(),functionTable)){
-            instructionList.add(new Instruction(Operation.stackalloc,1,4));
-        }
-        else {
-            instructionList.add(new Instruction(Operation.stackalloc,0,4));
-        }
-        if (check(TokenType.MINUS)||check(TokenType.IDENT)||check(TokenType.L_PAREN)||isLiteralExpr()){
-            analyseCallParamList(temp.getValueString());
-        }
-        expect(TokenType.R_PAREN);
-        while (stack.peek()!=TokenType.L_PAREN){
+            expect(TokenType.R_PAREN);
 
-            Instruction.AddToInstructionListInt(stack.pop(),instructionList);
-        }
-        stack.pop();
-        instructionList.add(instruction);
-        return type1;
-    }
 
-    private String analyseIdentExpression(Token temp) throws CompileError{
-        String type="";
-        SymbolEntry symbolEntry= Fuzhu.CanBeUsed(symbolTable,level,temp.getValueString());
-        parameter param= Fuzhu.isParameter(parameters,temp.getValueString());
-        if (symbolEntry==null&&param==null){
-            throw new AnalyzeError(ErrorCode.NotDeclared);
-        }
-        Instruction instruction;
-        int id;
-        if (param!=null){
-            id=Fuzhu.getParamOffset(param.getName(),parameters);
-            instruction=new Instruction(Operation.arga,parameter_offset+id,4);
+            //弹栈
+            while (stack.peek() != TokenType.L_PAREN) {
+                TokenType tokenType = stack.pop();
+                Instruction.AddToInstructionListInt(tokenType, instructionList);
+            }
+            stack.pop();
+
             instructionList.add(instruction);
-            type=param.getType();
+
         }
-        else {
-            if (symbolEntry.getLevel()>0){
-                id=symbolEntry.getStackOffset();
-                instruction=new Instruction(Operation.loca,id,4);
+
+        else{
+            SymbolEntry symbol = Fuzhu.CanBeUsed(symbolTable,level,tmp.getValueString());
+            parameter parameter = Fuzhu.isParameter(parameters, tmp.getValueString());
+            if (symbol==null&&parameter==null)
+                throw new AnalyzeError(ErrorCode.NotDeclared,tmp.getStartPos());
+            Instruction instruction;
+
+            int id;
+            //参数
+            if (parameter!=null) {
+                id = Fuzhu.getParamOffset(parameter.getName(), parameters);
+                instruction = new Instruction(Operation.arga, parameter_offset + id,4);
                 instructionList.add(instruction);
+                Type1 = parameter.getType();
             }
+            //变量
             else {
-                id=symbolEntry.getStackOffset();
-                instruction=new Instruction(Operation.globa,id,4);
-                instructionList.add(instruction);
+                /* 全局 */
+                if(symbol.getLevel()>0){
+                    id = symbol.getStackOffset();
+                    instruction = new Instruction(Operation.loca, id,4);
+                    instructionList.add(instruction);
+                }
+                /* 局部 */
+                else {
+                    id = symbol.getStackOffset();
+                    instruction = new Instruction(Operation.globa, id,4);
+                    instructionList.add(instruction);
+                }
+                Type1 = symbol.getType();
             }
-            type=symbolEntry.getType();
+            instructionList.add(new Instruction(Operation.load));
         }
-        instructionList.add(new Instruction(Operation.load));
-        return type;
+        return Type1;
     }
 
     private int analyseCallParamList(String name) throws CompileError{
